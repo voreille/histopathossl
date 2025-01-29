@@ -104,14 +104,18 @@ class MoCoV2Lightning(LightningModule):
 
         return q, k
 
-    def training_step(self, x, batch_idx):
-        x_q, x_k = self.augment(x), self.augment(x)
+    def training_step(self, batch, batch_idx):
+        x_q, x_k = batch
         q, k = self(x_q, x_k)
 
         # Contrastive loss
-        pos_logits = torch.einsum("nc,nc->n", [q, k]).unsqueeze(-1)
-        neg_logits = torch.einsum("nc,kc->nk",
-                                  [q, self.queue.clone().detach()])
+
+        # pos_logits = torch.einsum("nc,nc->n", [q, k]).unsqueeze(-1)
+        # neg_logits = torch.einsum("nc,kc->nk",
+        #                           [q, self.queue.clone().detach()])
+
+        pos_logits = (q * k).sum(dim=1, keepdim=True)  # Faster than einsum
+        neg_logits = q @ self.queue.clone().detach().T  # Matrix multiplication (faster)
 
         logits = torch.cat([pos_logits, neg_logits], dim=1)
         logits /= self.temperature

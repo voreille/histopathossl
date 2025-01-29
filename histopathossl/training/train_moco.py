@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from pytorch_lightning import Trainer
 from torch.utils.data import DataLoader
 from torchvision.transforms import ToTensor, transforms
+import torch
 
 from histopathossl.models.moco_ligthing import MoCoV2Lightning
 from histopathossl.training.dataset import TileDataset
@@ -20,7 +21,7 @@ def get_augmentations(aug_plus=True):
     if aug_plus:
         # MoCo v2's aug: similar to SimCLR https://arxiv.org/abs/2002.05709
         augmentation = [
-            transforms.RandomResizedCrop(224, scale=(0.2, 1.0)),
+            transforms.RandomResizedCrop(224, scale=(0.9, 1.0)), # TODO: CHECK THIS
             transforms.RandomApply(
                 [transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)],
                 p=0.8,  # not strengthened
@@ -86,22 +87,22 @@ def get_augmentations(aug_plus=True):
               default=10,
               show_default=True,
               help="Number of training epochs.")
-@click.option(
-    "--val-ratio",
-    default=0.1,
-    show_default=True,
-    help="Proportion of WSIs to use for validation.",
-)
 @click.option("--num-workers",
               default=4,
               show_default=True,
               help="Number of workers for data loading.")
 @click.option('--gpu-id', default=0, help='GPU ID for embedding generation.')
+@click.option('--enable-cudnn-benchmark',
+              is_flag=True,
+              default=False,
+              help='Enable CuDNN benchmark mode.')
 def main(batch_size, queue_size, base_encoder, output_dim, momentum,
-         temperature, learning_rate, max_epochs, val_ratio, num_workers,
-         gpu_id):
+         temperature, learning_rate, max_epochs, num_workers, gpu_id,
+         enable_cudnn_benchmark):
     # Load environment variables
     load_dotenv()
+    if enable_cudnn_benchmark:
+        torch.backends.cudnn.benchmark = True
     dataset_path = os.getenv("DATA_TILE_672_PATH")
     if not dataset_path:
         raise ValueError("DATA_TILE_672_PATH is not set in .env file")
@@ -118,8 +119,11 @@ def main(batch_size, queue_size, base_encoder, output_dim, momentum,
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
-        num_workers=num_workers,
+        num_workers=24,
         shuffle=True,
+        pin_memory=True,
+        persistent_workers=True,  # Relevant at the end of the epoch
+        prefetch_factor=4,
     )
 
     # Step 6: Initialize model
@@ -135,6 +139,7 @@ def main(batch_size, queue_size, base_encoder, output_dim, momentum,
     # Step 7: Train model
     trainer = Trainer(max_epochs=max_epochs,
                       accelerator="gpu",
+                      precision=16,
                       devices=[gpu_id])
     trainer.fit(model, train_loader)
 
