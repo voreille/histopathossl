@@ -36,7 +36,6 @@ class MoCoV2Lightning(LightningModule):
                  queue_size=65536,
                  momentum=0.999,
                  temperature=0.07,
-                 aug_plus=True,
                  lr=1e-3):
         super().__init__()
         self.save_hyperparameters()
@@ -47,7 +46,6 @@ class MoCoV2Lightning(LightningModule):
         self.temperature = temperature
         self.momentum = momentum
         self.lr = lr
-        self.aug_plus = aug_plus
 
         self.register_buffer("queue", torch.randn(queue_size, output_dim))
         self.queue = F.normalize(self.queue, dim=1)
