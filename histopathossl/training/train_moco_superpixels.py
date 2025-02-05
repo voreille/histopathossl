@@ -51,7 +51,7 @@ def get_augmentations(aug_plus=True):
 
 @click.command()
 @click.option("--batch-size",
-              default=32,
+              default=256,
               show_default=True,
               help="Batch size for training.")
 @click.option(

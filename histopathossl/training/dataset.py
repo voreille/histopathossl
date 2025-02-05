@@ -1,5 +1,6 @@
 import json
 import random
+from pathlib import Path
 
 from torch.utils.data import Dataset
 # import pyspng
@@ -87,3 +88,54 @@ class SuperpixelMoCoDataset(Dataset):
             image_2 = self.transform(image_2)
 
         return image_1, image_2
+
+
+class SuperpixelMoCoDatasetDebug(Dataset):
+    """
+    A dataset that draws a configurable number of random tiles from the same superpixel 
+    and applies MoCo transformations.
+
+    Args:
+        mapping_json (str): Path to the JSON file containing the mapping.
+        num_tiles (int): Number of tiles to return per sample.
+        transform (callable, optional): MoCo-style augmentation transform.
+    """
+
+    def __init__(self, mapping_json, num_tiles=2, transform=None):
+        assert num_tiles > 0, "num_tiles must be at least 1"
+
+        # Load the mapping as a list of dictionaries
+        with open(mapping_json, "r") as f:
+            self.superpixel_list = json.load(f)
+
+        self.num_tiles = num_tiles
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.superpixel_list)
+
+    def __getitem__(self, idx):
+        """
+        Returns a specified number of tiles belonging to the same superpixel.
+
+        Returns:
+            List of transformed images.
+        """
+        superpixel_data = self.superpixel_list[idx]
+        tile_paths = superpixel_data["tile_paths"]
+        nb_tiles = len(tile_paths)
+
+        # Sample `num_tiles` tiles (with replacement)
+        sampled_tile_paths = random.choices(tile_paths, k=self.num_tiles)
+
+        # Load images and apply transformations
+        images = [
+            Image.open(path).convert("RGB") for path in sampled_tile_paths
+        ]
+
+        if self.transform:
+            images = [self.transform(img) for img in images]
+
+        tile_ids = [Path(p).stem for p in sampled_tile_paths]
+
+        return images, tile_ids, nb_tiles
