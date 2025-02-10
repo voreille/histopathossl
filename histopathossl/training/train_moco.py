@@ -88,7 +88,7 @@ def get_augmentations(aug_plus=True):
               show_default=True,
               help="Number of training epochs.")
 @click.option("--num-workers",
-              default=4,
+              default=24,
               show_default=True,
               help="Number of workers for data loading.")
 @click.option('--gpu-id', default=0, help='GPU ID for embedding generation.')
@@ -119,7 +119,7 @@ def main(batch_size, queue_size, base_encoder, output_dim, momentum,
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
-        num_workers=24,
+        num_workers=num_workers,
         shuffle=True,
         pin_memory=True,
         persistent_workers=True,  # Relevant at the end of the epoch
@@ -139,7 +139,7 @@ def main(batch_size, queue_size, base_encoder, output_dim, momentum,
     # Step 7: Train model
     trainer = Trainer(max_epochs=max_epochs,
                       accelerator="gpu",
-                      precision=16,
+                      precision="16-mixed",
                       devices=[gpu_id])
     trainer.fit(model, train_loader)
 
