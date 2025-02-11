@@ -63,14 +63,14 @@ def infinite_dataloader(dataloader):
 def main():
     batch_size = 256
     queue_size = 65536
-    base_encoder = "resnet50"
+    base_encoder = "convnext_large" # work with "resnet50"
     output_dim = 128
     momentum = 0.999
     temperature = 0.07
     learning_rate = 1e-3
     max_epochs = 2
     limit_train_batches = 100
-    num_workers = 24
+    num_workers = 0
     gpu_id = 1
     enable_cudnn_benchmark = True
 
@@ -80,7 +80,8 @@ def main():
         torch.backends.cudnn.benchmark = True
     project_dir = Path(__file__).parents[2].resolve()
     wsi_dir = project_dir / "data/raw/tcga_subset"
-    mask_dir = "/home/valentin/workspaces/histolung/data/interim/masks"
+    mask_dir = "/home/valentin/workspaces/histopathossl/data/interim/masks/output"
+    # mask_dir = "/home/valentin/workspaces/histolung/data/interim/masks"
     wsi_paths = list(wsi_dir.rglob("*.svs"))
     wsi_ids = [p.stem.split(".")[0] for p in wsi_paths]
     mask_paths = [
@@ -91,13 +92,13 @@ def main():
     mask_paths.sort(key=lambda x: x.stem.split(".")[0])
     wsi_ids.sort()
 
-    # train_dataset = WSIDataset(
-    #     wsi_paths,
-    #     mask_paths,
-    #     transform=transforms.ToTensor(),
-    #     # transform=get_augmentations(),
-    # )
-    train_dataset = DummyDataset(transform=transforms.ToTensor())
+    train_dataset = WSIDataset(
+        wsi_paths,
+        mask_paths,
+        transform=transforms.ToTensor(),
+        # transform=get_augmentations(),
+    )
+    # train_dataset = DummyDataset(transform=transforms.ToTensor())
 
     train_loader = DataLoader(
         train_dataset,

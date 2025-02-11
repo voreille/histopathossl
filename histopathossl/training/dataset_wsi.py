@@ -67,7 +67,7 @@ class WSIDataset(Dataset):
     def __init__(self,
                  wsi_paths,
                  mask_paths,
-                 tile_size=256,
+                 tile_size=224,
                  target_magnification=10,
                  transform=None,
                  jitter=16,
@@ -232,11 +232,11 @@ class WSIDataset(Dataset):
             x, y, level = self.get_valid_tile(index)
 
             # Extract tile using OpenSlide read_region()
-            # tile = slide.read_region(
-            #     (x, y), level, (self.tile_size, self.tile_size)).convert("RGB")
-            tile = Image.fromarray(
-                np.random.rand(self.tile_size, self.tile_size,
-                               3).astype(np.uint8))
+            tile = slide.read_region(
+                (x, y), level, (self.tile_size, self.tile_size)).convert("RGB")
+            # tile = Image.fromarray(
+            #     np.random.rand(self.tile_size, self.tile_size,
+            #                    3).astype(np.uint8))
 
             if self.transform:
                 tile = self.transform(tile)

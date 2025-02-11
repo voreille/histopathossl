@@ -53,14 +53,21 @@ class MoCoV2Lightning(LightningModule):
 
         self._initialize_momentum_encoder()
 
-
     def _load_resnet(self, base_encoder, output_dim, pretrained=False):
         weights = get_resnet_weights(base_encoder) if pretrained else None
         encoder = getattr(models, base_encoder)(weights=weights)
-        hidden_dim = encoder.fc.in_features
-        encoder.fc = nn.Sequential(nn.Linear(hidden_dim,
-                                             hidden_dim), nn.ReLU(),
-                                   nn.Linear(hidden_dim, output_dim))
+        if base_encoder == "resnet50":
+            hidden_dim = encoder.fc.in_features
+            encoder.fc = nn.Sequential(nn.Linear(hidden_dim, hidden_dim),
+                                       nn.ReLU(),
+                                       nn.Linear(hidden_dim, output_dim))
+
+        elif base_encoder == "convnext_large":
+            hidden_dim = encoder.classifier.in_features
+            encoder.classifier = nn.Sequential(
+                nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
+                nn.Linear(hidden_dim, output_dim))
+
         return encoder
 
     def _initialize_momentum_encoder(self):
@@ -113,7 +120,8 @@ class MoCoV2Lightning(LightningModule):
         #                           [q, self.queue.clone().detach()])
 
         pos_logits = (q * k).sum(dim=1, keepdim=True)  # Faster than einsum
-        neg_logits = q @ self.queue.clone().detach().T  # Matrix multiplication (faster)
+        neg_logits = q @ self.queue.clone().detach(
+        ).T  # Matrix multiplication (faster)
 
         logits = torch.cat([pos_logits, neg_logits], dim=1)
         logits /= self.temperature
