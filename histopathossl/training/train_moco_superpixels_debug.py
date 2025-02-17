@@ -80,8 +80,8 @@ def main():
         torch.backends.cudnn.benchmark = True
     project_dir = Path(__file__).parents[2].resolve()
     wsi_dir = project_dir / "data/raw/tcga_subset"
-    mask_dir = "/home/valentin/workspaces/histopathossl/data/interim/masks/output"
-    # mask_dir = "/home/valentin/workspaces/histolung/data/interim/masks"
+    # mask_dir = "/home/valentin/workspaces/histopathossl/data/interim/masks/output"
+    mask_dir = "/home/valentin/workspaces/histolung/data/interim/masks"
     wsi_paths = list(wsi_dir.rglob("*.svs"))
     wsi_ids = [p.stem.split(".")[0] for p in wsi_paths]
     mask_paths = [

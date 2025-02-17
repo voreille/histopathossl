@@ -63,10 +63,14 @@ class MoCoV2Lightning(LightningModule):
                                        nn.Linear(hidden_dim, output_dim))
 
         elif base_encoder == "convnext_large":
-            hidden_dim = encoder.classifier.in_features
+            hidden_dim = encoder.classifier[-1].in_features
             encoder.classifier = nn.Sequential(
-                nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
-                nn.Linear(hidden_dim, output_dim))
+                nn.Linear(hidden_dim, 128),
+                nn.ReLU(),
+                nn.Linear(128, 128),
+                nn.ReLU(),
+                nn.Linear(128, output_dim),
+            )
 
         return encoder
 

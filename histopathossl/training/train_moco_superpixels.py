@@ -22,7 +22,7 @@ def get_augmentations(aug_plus=True):
         # MoCo v2's aug: similar to SimCLR https://arxiv.org/abs/2002.05709
         augmentation = [
             transforms.RandomResizedCrop(224,
-                                         scale=(0.9, 1.0)),  # TODO: CHECK THIS
+                                         scale=(0.9, 1.0)),  # TODO: CHECK THIS (0.2, 1.0)
             transforms.RandomApply(
                 [transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)],
                 p=0.8,  # not strengthened
@@ -39,7 +39,7 @@ def get_augmentations(aug_plus=True):
     else:
         # MoCo v1's aug: the same as InstDisc https://arxiv.org/abs/1805.01978
         augmentation = [
-            transforms.RandomResizedCrop(224, scale=(0.2, 1.0)),
+            transforms.RandomResizedCrop(224, scale=(0.9, 1.0)),
             transforms.RandomGrayscale(p=0.2),
             transforms.ColorJitter(0.4, 0.4, 0.4, 0.4),
             transforms.RandomHorizontalFlip(),
@@ -101,7 +101,7 @@ def get_augmentations(aug_plus=True):
     '--superpixel-tile-map',
     type=click.Path(),
     default=
-    "/home/valentin/workspaces/histolung/data/interim/tiles_superpixels/training_superpixel_tile_map.json",
+    "/home/valentin/workspaces/histolung/data/interim/tiles_superpixels_with_overlap/superpixel_mapping_train.json",
     help='path to the *.json mapping superpixels to tile paths')
 def main(batch_size, queue_size, base_encoder, output_dim, momentum,
          temperature, learning_rate, max_epochs, num_workers, gpu_id,
