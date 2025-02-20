@@ -115,6 +115,8 @@ class MoCoV2Lightning(LightningModule):
 
     def training_step(self, batch, batch_idx):
         x_q, x_k = batch
+        x_q = x_q.cuda(non_blocking=True)
+        x_k = x_k.cuda(non_blocking=True)
         q, k = self(x_q, x_k)
 
         # Contrastive loss

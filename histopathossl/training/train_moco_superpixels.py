@@ -7,10 +7,14 @@ from pytorch_lightning import Trainer
 from torch.utils.data import DataLoader
 from torchvision.transforms import ToTensor, transforms
 import torch
+from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import RichProgressBar
 
 from histopathossl.models.moco_ligthing import MoCoV2Lightning
-from histopathossl.training.dataset import SuperpixelMoCoDataset
+from histopathossl.training.dataset import SuperpixelMoCoDatasetFaster
 from histopathossl.training.augmentations import GaussianBlur, TwoCropsTransform
+
+project_dir = Path(__file__).parents[2].resolve()
 
 
 def get_augmentations(aug_plus=True):
@@ -21,8 +25,8 @@ def get_augmentations(aug_plus=True):
     if aug_plus:
         # MoCo v2's aug: similar to SimCLR https://arxiv.org/abs/2002.05709
         augmentation = [
-            transforms.RandomResizedCrop(224,
-                                         scale=(0.9, 1.0)),  # TODO: CHECK THIS (0.2, 1.0)
+            transforms.RandomResizedCrop(
+                224, scale=(0.9, 1.0)),  # TODO: CHECK THIS (0.2, 1.0)
             transforms.RandomApply(
                 [transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)],
                 p=0.8,  # not strengthened
@@ -47,6 +51,58 @@ def get_augmentations(aug_plus=True):
             normalize,
         ]
     return transforms.Compose(augmentation)
+
+
+def get_augmentations_faster(aug_plus=True):
+    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                     std=[0.229, 0.224, 0.225])
+    if aug_plus:
+        augmentation = transforms.Compose([
+            transforms.RandomResizedCrop(224, scale=(0.9, 1.0)),
+            transforms.RandomApply(
+                [transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=0.8),
+            transforms.RandomGrayscale(p=0.2),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            normalize,
+        ])
+    else:
+        augmentation = transforms.Compose([
+            transforms.RandomResizedCrop(224, scale=(0.9, 1.0)),
+            transforms.RandomGrayscale(p=0.2),
+            transforms.ColorJitter(0.4, 0.4, 0.4, 0.4),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            normalize,
+        ])
+    return augmentation
+
+
+def get_callbacks(checkpoint_dir="model/checkpoints"):
+    checkpoint_dir = project_dir / checkpoint_dir
+    return [
+        # ModelCheckpoint(
+        #     dirpath=checkpoint_dir,
+        #     filename="moco_best_{epoch:02d}_{train_loss:.2f}",
+        #     monitor="train_loss_epoch",  # Logs training loss per epoch
+        #     save_top_k=1,  # Keep only the best model
+        #     mode="min",
+        #     save_last=True,  # Always keep the last epoch
+        # ),
+        # ModelCheckpoint(
+        #     dirpath=checkpoint_dir,
+        #     filename="moco_last",  # Always overwrite last.ckpt
+        #     save_last=True,  # This ensures only the last model is kept
+        #     save_top_k=0,  # Don't track best models in this checkpoint
+        # ),
+        # ModelCheckpoint(
+        #     dirpath=checkpoint_dir,
+        #     filename="moco_epoch_{epoch:02d}",
+        #     every_n_epochs=5,  # Save every 5 epochs
+        #     save_top_k=-1,  # Keep all saved checkpoints
+        # ),
+        RichProgressBar(),
+    ]
 
 
 @click.command()
@@ -89,7 +145,7 @@ def get_augmentations(aug_plus=True):
               show_default=True,
               help="Number of training epochs.")
 @click.option("--num-workers",
-              default=24,
+              default=32,
               show_default=True,
               help="Number of workers for data loading.")
 @click.option('--gpu-id', default=0, help='GPU ID for embedding generation.')
@@ -103,31 +159,34 @@ def get_augmentations(aug_plus=True):
     default=
     "/home/valentin/workspaces/histolung/data/interim/tiles_superpixels_with_overlap/superpixel_mapping_train.json",
     help='path to the *.json mapping superpixels to tile paths')
+@click.option('--checkpoint-path',
+              type=click.Path(),
+              default=None,
+              help='path to the checkpoint to load')
 def main(batch_size, queue_size, base_encoder, output_dim, momentum,
          temperature, learning_rate, max_epochs, num_workers, gpu_id,
-         enable_cudnn_benchmark, superpixel_tile_map):
-    # Load environment variables
+         enable_cudnn_benchmark, superpixel_tile_map, checkpoint_path):
+
     load_dotenv()
-    if enable_cudnn_benchmark:
-        torch.backends.cudnn.benchmark = True
-    project_dir = Path(__file__).parents[2].resolve()
+    # if enable_cudnn_benchmark:
+    #     torch.backends.cudnn.benchmark = True
+
     superpixel_tile_map = project_dir / superpixel_tile_map
 
-    train_dataset = SuperpixelMoCoDataset(
+    train_dataset = SuperpixelMoCoDatasetFaster(
         superpixel_tile_map,
-        transform=get_augmentations(),
+        transform=get_augmentations_faster(),
     )
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
-        num_workers=num_workers,
+        num_workers=56,
         shuffle=True,
         pin_memory=True,
-        persistent_workers=True,  # Relevant at the end of the epoch
-        prefetch_factor=4,
+        persistent_workers=True if num_workers > 0 else False,
+        prefetch_factor=8,
     )
 
-    # Step 6: Initialize model
     model = MoCoV2Lightning(
         base_encoder=base_encoder,
         output_dim=output_dim,
@@ -137,11 +196,14 @@ def main(batch_size, queue_size, base_encoder, output_dim, momentum,
         lr=learning_rate,
     )
 
-    # Step 7: Train model
-    trainer = Trainer(max_epochs=max_epochs,
-                      accelerator="gpu",
-                      precision="16-mixed",
-                      devices=[gpu_id])
+    trainer = Trainer(
+        max_epochs=max_epochs,
+        accelerator="gpu",
+        precision="16-mixed",
+        devices=[gpu_id],
+        callbacks=get_callbacks(),
+        benchmark=enable_cudnn_benchmark,
+    )
     trainer.fit(model, train_loader)
 
 

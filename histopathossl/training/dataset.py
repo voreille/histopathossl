@@ -3,7 +3,7 @@ import random
 from pathlib import Path
 
 from torch.utils.data import Dataset
-# import pyspng
+import pyspng
 from PIL import Image
 
 
@@ -90,6 +90,40 @@ class SuperpixelMoCoDataset(Dataset):
         return image_1, image_2
 
 
+class SuperpixelMoCoDatasetFaster(Dataset):
+
+    def __init__(self, mapping_json, transform=None):
+        with open(mapping_json, "r") as f:
+            self.superpixel_list = json.load(f)
+
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.superpixel_list)
+
+    def _load_image(self, path):
+        with open(path, "rb") as f:
+            img = pyspng.load(f.read())
+        img = Image.fromarray(img).convert("RGB")  # Convert to PIL
+        return img
+
+    def __getitem__(self, idx):
+        superpixel_data = self.superpixel_list[idx]
+        tile_paths = superpixel_data["tile_paths"]
+
+        tile_path_1 = random.choice(tile_paths)
+        tile_path_2 = random.choice(tile_paths)
+
+        image_1 = self._load_image(tile_path_1)
+        image_2 = self._load_image(tile_path_2)
+
+        if self.transform:
+            image_1 = self.transform(image_1)
+            image_2 = self.transform(image_2)
+
+        return image_1, image_2
+
+
 class SuperpixelMoCoDatasetDebug(Dataset):
     """
     A dataset that draws a configurable number of random tiles from the same superpixel 
@@ -114,6 +148,12 @@ class SuperpixelMoCoDatasetDebug(Dataset):
     def __len__(self):
         return len(self.superpixel_list)
 
+    def _load_image(self, path):
+        with open(path, "rb") as f:
+            img = pyspng.load(f.read())
+        img = Image.fromarray(img).convert("RGB")  # Convert to PIL
+        return img
+
     def __getitem__(self, idx):
         """
         Returns a specified number of tiles belonging to the same superpixel.
@@ -129,9 +169,7 @@ class SuperpixelMoCoDatasetDebug(Dataset):
         sampled_tile_paths = random.choices(tile_paths, k=self.num_tiles)
 
         # Load images and apply transformations
-        images = [
-            Image.open(path).convert("RGB") for path in sampled_tile_paths
-        ]
+        images = [self._load_image(path) for path in sampled_tile_paths]
 
         if self.transform:
             images = [self.transform(img) for img in images]
