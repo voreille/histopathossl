@@ -8,6 +8,7 @@ from pytorch_lightning import Trainer
 from torch.utils.data import DataLoader
 from torchvision.transforms import transforms
 from lightning.pytorch.loggers import TensorBoardLogger
+from pytorch_lightning.callbacks import LearningRateMonitor
 
 from histopathossl.models.moco_ligthing import MoCoV2Lightning
 from histopathossl.training.augmentations import GaussianBlur, TwoCropsTransform
@@ -191,11 +192,11 @@ def get_dataloaders(data_dir, magnification_key=5, batch_size=32, num_workers=24
     "--magnification-key", show_default=True, default=5, help="Magnification key."
 )
 @click.option(
-    "--batch-size", default=32, show_default=True, help="Batch size for training."
+    "--batch-size", default=256, show_default=True, help="Batch size for training."
 )
 @click.option(
     "--queue-size",
-    default=4096,
+    default=8192,
     show_default=True,
     help="Queue size for negative samples, to test btwn 4096 and 8192 or else",
 )
@@ -212,7 +213,10 @@ def get_dataloaders(data_dir, magnification_key=5, batch_size=32, num_workers=24
     help="Output dimension of the model.",
 )
 @click.option(
-    "--momentum", default=0.999, show_default=True, help="Momentum for key encoder."
+    "--momentum-key-encoder",
+    default=0.999,
+    show_default=True,
+    help="Momentum for key encoder.",
 )
 @click.option(
     "--temperature",
@@ -222,12 +226,24 @@ def get_dataloaders(data_dir, magnification_key=5, batch_size=32, num_workers=24
 )
 @click.option(
     "--learning-rate",
-    default=1e-3,
+    default=0.003,
     show_default=True,
     help="Learning rate for training.",
 )
 @click.option(
-    "--max-epochs", default=10, show_default=True, help="Number of training epochs."
+    "--momentum-sgd", default=0.9, show_default=True, help="Momentum for SGD optimizer."
+)
+@click.option(
+    "--weight-decay",
+    default=1e-4,
+    show_default=True,
+    help="Weight decay for optimizer.",
+)
+@click.option(
+    "--max-epochs", default=200, show_default=True, help="Number of training epochs."
+)
+@click.option(
+    "--warmup-epochs", default=10, show_default=True, help="Number of warmup epochs."
 )
 @click.option(
     "--num-workers",
@@ -242,6 +258,12 @@ def get_dataloaders(data_dir, magnification_key=5, batch_size=32, num_workers=24
     default=False,
     help="Enable CuDNN benchmark mode.",
 )
+@click.option(
+    "--pretrained",
+    is_flag=True,
+    default=True,  # Set to use pretrained weights
+    help="Use pretrained weights for the encoder",
+)
 def main(
     data_dir,
     magnification_key,
@@ -249,13 +271,17 @@ def main(
     queue_size,
     base_encoder,
     output_dim,
-    momentum,
+    momentum_key_encoder,
     temperature,
     learning_rate,
+    momentum_sgd,
+    weight_decay,
     max_epochs,
+    warmup_epochs,
     num_workers,
     gpu_id,
     enable_cudnn_benchmark,
+    pretrained,
 ):
     # Load environment variables
     load_dotenv()
@@ -286,15 +312,23 @@ def main(
         base_encoder=base_encoder,
         output_dim=output_dim,
         queue_size=queue_size,
-        momentum=momentum,
+        momentum_key_encoder=momentum_key_encoder,
+        warmup_epochs=warmup_epochs,
+        weight_decay=weight_decay,
+        momentum_sgd=momentum_sgd,
         temperature=temperature,
         logger=TensorBoardLogger("tb_logs", name="linear_probing_from_embeddings"),
         lr=learning_rate,
+        pretrained=pretrained,
     )
 
     # Step 7: Train model
     trainer = Trainer(
-        max_epochs=max_epochs, accelerator="gpu", precision="16-mixed", devices=[gpu_id]
+        max_epochs=max_epochs,
+        accelerator="gpu",
+        precision="16-mixed",
+        devices=[gpu_id],
+        callbacks=[LearningRateMonitor(logging_interval="epoch")],
     )
     trainer.fit(model, train_loader)
 
