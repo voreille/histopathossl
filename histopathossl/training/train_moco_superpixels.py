@@ -180,7 +180,7 @@ def main(batch_size, queue_size, base_encoder, output_dim, momentum,
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
-        num_workers=56,
+        num_workers=32,
         shuffle=True,
         pin_memory=True,
         persistent_workers=True if num_workers > 0 else False,

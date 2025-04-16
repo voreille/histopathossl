@@ -4,9 +4,13 @@ import torch.nn.functional as F
 from torchvision import models
 from torchvision.transforms import transforms
 from pytorch_lightning import LightningModule
-from torchvision.models import (ResNet18_Weights, ResNet34_Weights,
-                                ResNet50_Weights, ResNet101_Weights,
-                                ResNet152_Weights)
+from torchvision.models import (
+    ResNet18_Weights,
+    ResNet34_Weights,
+    ResNet50_Weights,
+    ResNet101_Weights,
+    ResNet152_Weights,
+)
 
 from histopathossl.training.augmentations import GaussianBlur
 
@@ -29,22 +33,28 @@ def get_resnet_weights(base_encoder):
 
 
 class MoCoV2Lightning(LightningModule):
-
-    def __init__(self,
-                 base_encoder="resnet50",
-                 output_dim=128,
-                 queue_size=65536,
-                 momentum=0.999,
-                 temperature=0.07,
-                 lr=1e-3):
+    def __init__(
+        self,
+        base_encoder="resnet50",
+        output_dim=128,
+        queue_size=65536,
+        momentum_key_encoder=0.999,
+        momentum_sgd=0.9,
+        temperature=0.07,
+        pretrained=False,
+        lr=1e-3,
+    ):
         super().__init__()
         self.save_hyperparameters()
 
-        self.encoder_q = self._load_resnet(base_encoder, output_dim)
+        self.encoder_q = self._load_resnet(
+            base_encoder, output_dim, pretrained=pretrained
+        )
         self.encoder_k = self._load_resnet(base_encoder, output_dim)
 
         self.temperature = temperature
-        self.momentum = momentum
+        self.momentum_key_encoder = momentum_key_encoder
+        self.momentum_sgd = momentum_sgd
         self.lr = lr
 
         self.register_buffer("queue", torch.randn(queue_size, output_dim))
@@ -58,9 +68,11 @@ class MoCoV2Lightning(LightningModule):
         encoder = getattr(models, base_encoder)(weights=weights)
         if base_encoder == "resnet50":
             hidden_dim = encoder.fc.in_features
-            encoder.fc = nn.Sequential(nn.Linear(hidden_dim, hidden_dim),
-                                       nn.ReLU(),
-                                       nn.Linear(hidden_dim, output_dim))
+            encoder.fc = nn.Sequential(
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.ReLU(),
+                nn.Linear(hidden_dim, output_dim),
+            )
 
         elif base_encoder == "convnext_large":
             hidden_dim = encoder.classifier[-1].in_features
@@ -75,17 +87,20 @@ class MoCoV2Lightning(LightningModule):
         return encoder
 
     def _initialize_momentum_encoder(self):
-        for param_q, param_k in zip(self.encoder_q.parameters(),
-                                    self.encoder_k.parameters()):
+        for param_q, param_k in zip(
+            self.encoder_q.parameters(), self.encoder_k.parameters()
+        ):
             param_k.data.copy_(param_q.data)
             param_k.requires_grad = False
 
     @torch.no_grad()
     def _momentum_update_key_encoder(self):
-        for param_q, param_k in zip(self.encoder_q.parameters(),
-                                    self.encoder_k.parameters()):
-            param_k.data.mul_(self.momentum).add_(param_q.data,
-                                                  alpha=1 - self.momentum)
+        for param_q, param_k in zip(
+            self.encoder_q.parameters(), self.encoder_k.parameters()
+        ):
+            param_k.data.mul_(self.momentum_key_encoder).add_(
+                param_q.data, alpha=1 - self.momentum_key_encoder
+            )
 
     @torch.no_grad()
     def _dequeue_and_enqueue(self, keys):
@@ -98,7 +113,7 @@ class MoCoV2Lightning(LightningModule):
         else:
             first_part = self.queue.size(0) - ptr
             self.queue[ptr:, :] = keys[:first_part, :]
-            self.queue[:end_ptr % self.queue.size(0), :] = keys[first_part:, :]
+            self.queue[: end_ptr % self.queue.size(0), :] = keys[first_part:, :]
 
         self.queue_ptr[0] = (ptr + batch_size) % self.queue.size(0)
 
@@ -126,26 +141,24 @@ class MoCoV2Lightning(LightningModule):
         #                           [q, self.queue.clone().detach()])
 
         pos_logits = (q * k).sum(dim=1, keepdim=True)  # Faster than einsum
-        neg_logits = q @ self.queue.clone().detach(
-        ).T  # Matrix multiplication (faster)
+        neg_logits = q @ self.queue.clone().detach().T  # Matrix multiplication (faster)
 
         logits = torch.cat([pos_logits, neg_logits], dim=1)
         logits /= self.temperature
 
-        labels = torch.zeros(logits.size(0),
-                             dtype=torch.long,
-                             device=self.device)
+        labels = torch.zeros(logits.size(0), dtype=torch.long, device=self.device)
         loss = F.cross_entropy(logits, labels)
 
         # Update queue
         self._dequeue_and_enqueue(k)
 
-        self.log("train_loss",
-                 loss,
-                 on_step=True,
-                 on_epoch=True,
-                 prog_bar=True)
+        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
         return loss
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.lr)
+        return torch.optim.SGD(
+            self.parameters(),
+            self.lr,
+            momentum=self.momentum_sgd,
+            weight_decay=self.weight_decay,
+        )
