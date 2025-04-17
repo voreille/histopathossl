@@ -18,6 +18,7 @@ from histopathossl.training.augmentations import GaussianBlur
 
 
 def get_resnet_weights(base_encoder):
+    print(f"Loading weights for {base_encoder}")
     resnet_weights_map = {
         "resnet18": ResNet18_Weights.DEFAULT,
         "resnet34": ResNet34_Weights.DEFAULT,
@@ -46,10 +47,11 @@ class MoCoV2Lightning(LightningModule):
         weight_decay=1e-4,
         temperature=0.07,
         warmup_epochs=10,
-        epoch_max=200,
-        pretrained=False,
+        max_epochs=200,
+        pretrained=True,
     ):
         super().__init__()
+
 
         self.encoder_q = self._load_resnet(
             base_encoder, output_dim, pretrained=pretrained
@@ -62,7 +64,7 @@ class MoCoV2Lightning(LightningModule):
         self.lr = lr
         self.weight_decay = weight_decay
         self.warmup_epochs = warmup_epochs
-        self.epoch_max = epoch_max
+        self.max_epochs = max_epochs
 
         self.register_buffer("queue", torch.randn(queue_size, output_dim))
         self.queue = F.normalize(self.queue, dim=1)
@@ -197,7 +199,9 @@ class MoCoV2Lightning(LightningModule):
             return 0.5 * (
                 1.0
                 + math.cos(
-                    math.pi * (epoch - warmup_epochs) / (self.epoch_max - warmup_epochs)
+                    math.pi
+                    * (epoch - warmup_epochs)
+                    / (self.max_epochs - warmup_epochs)
                 )
             )
 

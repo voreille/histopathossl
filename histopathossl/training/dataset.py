@@ -2,9 +2,10 @@ import json
 import random
 from pathlib import Path
 
-from torch.utils.data import Dataset
 import pyspng
+import torch
 from PIL import Image
+from torch.utils.data import Dataset
 
 
 class TwoCropsTransform:
@@ -20,7 +21,6 @@ class TwoCropsTransform:
 
 
 class TileDataset(Dataset):
-
     def __init__(self, tile_paths, transform=None):
         """
         Tile-level dataset that returns individual tile images from a list of paths.
@@ -43,6 +43,33 @@ class TileDataset(Dataset):
             image = self.transform(image)  # Apply augmentation
 
         return image
+
+
+class TileDatasetLabelled(Dataset):
+    def __init__(self, tile_paths, labels, transform=None):
+        """
+        Tile-level dataset that returns individual tile images from a list of paths.
+
+        Args:
+            tile_paths (list): List of paths to tile images for a WSI.
+            transform (callable, optional): Transform to apply to each tile image.
+        """
+        self.tile_paths = tile_paths
+        self.transform = transform
+        self.labels = labels
+
+    def __len__(self):
+        return len(self.tile_paths)
+
+    def __getitem__(self, idx):
+        label = self.labels[idx]
+        tile_path = self.tile_paths[idx]
+        image = Image.open(tile_path).convert("RGB")  # Load as PIL image
+
+        if self.transform:
+            image = self.transform(image)  # Apply augmentation
+
+        return image, torch.long(label)
 
 
 class SuperpixelMoCoDataset(Dataset):
@@ -91,7 +118,6 @@ class SuperpixelMoCoDataset(Dataset):
 
 
 class SuperpixelMoCoDatasetFaster(Dataset):
-
     def __init__(self, mapping_json, transform=None):
         with open(mapping_json, "r") as f:
             self.superpixel_list = json.load(f)
@@ -126,7 +152,7 @@ class SuperpixelMoCoDatasetFaster(Dataset):
 
 class SuperpixelMoCoDatasetDebug(Dataset):
     """
-    A dataset that draws a configurable number of random tiles from the same superpixel 
+    A dataset that draws a configurable number of random tiles from the same superpixel
     and applies MoCo transformations.
 
     Args:
